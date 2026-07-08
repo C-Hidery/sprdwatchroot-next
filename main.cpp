@@ -219,13 +219,16 @@ bool magisk_patch(const char* fn)
         }
     }
     f2.close();
-    EnhancedFile f3 = oxfopen_enhanced("config", "r");
+    EnhancedFile f3 = oxfopen_enhanced("config", "w");
     if (!f3)
     {
         DEG_LOG(E, u8"无法打开config文件\n");
         return false;
     }
-    std::string configContent = "RECOVERYMODE=true";
+    std::string configContent = 
+    "KEEPVERITY=true\n"
+    "KEEPFORCEENCRYPT=true\n"
+    "RECOVERYMODE=false";
     f3 << configContent;
     f3.close();
 
