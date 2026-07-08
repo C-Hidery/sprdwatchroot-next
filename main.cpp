@@ -19,18 +19,22 @@ using json = nlohmann::json;
 
 #define VERSION "0.1.0"
 
+#ifdef _WIN32
+#define chdir _chdir
+#endif
+
 // 外部工具链/文件硬编码
-const std::string KP_IMG_PATCHER = std::string("Res\\kptools.exe");
-const std::string KP_IMG = std::string("Res\\kpimg-android.kpimg-android");
-const std::string KEY_DIR = std::string("Res\\keys");
-const std::string ALGORITHM = std::string("SHA256_RSA4096");
-const std::string KEY_BOOT = std::string(KEY_DIR + "\\rsa4096_boot.pem");
-const std::string MAGISKBOOT = std::string("Res\\magiskboot.exe");
-const std::string BOOT_SIZE = std::string("36700160"); // 35MB
-const std::string SFD_TOOL = std::string("sfd_tool");
-const std::string FDL1_W527 = std::string("Res\\FDL\\W527\\fdl1.bin");
-const std::string FDL2_W527 = std::string("Res\\FDL\\W527\\fdl2.bin");
-const std::string SPL_W527 = std::string("Res\\FDL\\W527\\spl.bin");
+const std::string KP_IMG_PATCHER("kptools.exe");
+const std::string KP_IMG("kpimg-android.kpimg-android");
+const std::string KEY_DIR("keys");
+const std::string ALGORITHM("SHA256_RSA4096");
+const std::string KEY_BOOT("keys\\rsa4096_boot.pem");
+const std::string MAGISKBOOT("magiskboot.exe");
+const std::string BOOT_SIZE("36700160"); // 35MB
+const std::string SFD_TOOL("sfd_tool");
+const std::string FDL1_W527("FDL\\W527\\fdl1.bin");
+const std::string FDL2_W527("FDL\\W527\\fdl2.bin");
+const std::string SPL_W527("FDL\\W527\\spl.bin");
 
 enum LogLevel : int {
     I = 0, // Info
@@ -40,6 +44,38 @@ enum LogLevel : int {
     UN = 4,  // Undefined
     OP = 5  // Operation
 };
+
+bool copy_file(const char* src, const char* dst)
+{
+    EnhancedFile fi = oxfopen_enhanced(src, "rb");
+    if (!fi)
+    {
+        DEG_LOG(E, u8"无法打开源文件: %s\n", src);
+        return false;
+    }
+    EnhancedFile fo = oxfopen_enhanced(dst, "wb");
+    if (!fo)
+    {
+        DEG_LOG(E, u8"无法创建目标文件: %s\n", dst);
+        return false;
+    }
+    const size_t bufferSize = 8192; // 8KB 缓冲区
+    char buffer[bufferSize];
+    size_t bytesRead;
+    while ((bytesRead = fi.read(buffer, 1, bufferSize)) > 0)
+    {
+        size_t bytesWritten = fo.write(buffer, 1, bytesRead);
+        if (bytesWritten != bytesRead)
+        {
+            DEG_LOG(E, u8"写入目标文件失败: %s\n", dst);
+            return false;
+        }
+    }
+    fi.close();
+    fo.close();
+
+    return true;
+}
 
 #ifdef _WIN32
 std::string UTF8ToANSI(const std::string& utf8Str) {
@@ -146,6 +182,8 @@ void DEG_LOG(LogLevel level, const char* __format, ...)
 
 void w527_patch()
 {
+    chdir("Res");
+
     DEG_LOG(I, u8"------------------------------------------\n");
     DEG_LOG(I, u8"Spreadtrum W527 ROOT 处理程序\n");
     DEG_LOG(I, u8"[1] 执行AVB修补（必须执行）\n");
@@ -168,14 +206,104 @@ void w527_patch()
             DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret);
         }
         DEG_LOG(I, u8"AVB修补完成，请重新运行程序以继续ROOT\n");
+        return;
     }
     else if (selection == 2)
     {
-        // TODO
+        DEG_LOG(I, u8"请确保已执行AVB修补，否则ROOT可能失败\n");
+        DEG_LOG(I, u8"开始读取Boot分区\n");
+        std::string cmd = SFD_TOOL + " --no-gui --wait 30000 fdl " + FDL1_W527 + " 0x5500 fdl " + FDL2_W527 + " 0x9efffe00 exec w splloader " + SPL_W527 + " path Boot r boot reset";
+        DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
+        DEG_LOG(I, u8"执行命令: %s\n", cmd.c_str());
+        int ret = system(cmd.c_str());
+        if (ret != 0)
+        {
+            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret);
+        }
+        DEG_LOG(I, u8"手表已重启\n");
+        DEG_LOG(I, u8"开始修补Boot镜像\n");
+        if (!copy_file("Boot/boot.img", "boot.img"))
+        {
+            DEG_LOG(E, u8"复制Boot分区失败，请检查文件是否存在\n");
+            return;
+        }   
+        std::string cmd3 =  MAGISKBOOT + " unpack boot.img";
+        DEG_LOG(I, u8"执行命令: %s\n", cmd3.c_str());
+        int ret3 = system(cmd3.c_str());
+        if (ret3 != 0)
+        {
+            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret3);
+        }
+        if (!copy_file("kernel", "kernel-b"))
+        {
+            DEG_LOG(E, u8"复制Kernel失败，请检查文件是否存在\n");
+            return;
+        }
+        std::string cmd4 = KP_IMG_PATCHER + " -p --image kernel-b --skey \"w527root741852\" --kpimg " + KP_IMG + " --out kernel";
+        DEG_LOG(I, u8"执行命令: %s\n", cmd4.c_str());
+        int ret4 = system(cmd4.c_str());
+        if (ret4 != 0)
+        {
+            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret4);
+        }
+        std::string cmd5 = MAGISKBOOT + " repack boot.img";
+        DEG_LOG(I, u8"执行命令: %s\n", cmd5.c_str());
+        int ret5 = system(cmd5.c_str());
+        if (ret5 != 0)
+        {
+            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret5);
+        }
+        DEG_LOG(I, u8"完成，已修补的Boot镜像为\"new-boot.img\"\n");
+        DEG_LOG(I, u8"开始签名\n");
+        std::string cmd6 = "python avbtool.py add_hash_footer --image new-boot.img --partition_size " + BOOT_SIZE + " --algorithm " + ALGORITHM + " --key " + KEY_BOOT;
+        DEG_LOG(I, u8"执行命令: %s\n", cmd6.c_str());
+        int ret6 = system(cmd6.c_str());
+        if (ret6 != 0)
+        {
+            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret6);
+        }
+        DEG_LOG(I, u8"签名完成\n");
+        DEG_LOG(I, u8"请按任意键继续...\n");
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        std::cin.get();
+        DEG_LOG(I, u8"开始刷入Boot分区\n");
+        std::string cmd7 = SFD_TOOL + " --no-gui --wait 30000 fdl " + FDL1_W527 + " 0x5500 fdl " + FDL2_W527 + " 0x9efffe00 exec w splloader " + SPL_W527 + " w boot new-boot.img reset";
+        DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
+        DEG_LOG(I, u8"执行命令: %s\n", cmd7.c_str());
+        int ret7 = system(cmd7.c_str());
+        if (ret7 != 0)
+        {
+            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret7);
+        }
+        DEG_LOG(I, u8"超级用户密钥:w527root741852\n");
+        DEG_LOG(I, u8"刷写完毕！请检查是否有报错\n");
+        DEG_LOG(I, u8"请按任意键退出程序...\n");
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        std::cin.get();
+        return;
     }
     else if (selection == 3)
     {
-        // TODO
+        EnhancedFile fi = oxfopen_enhanced("Boot/boot.img", "rb");
+        if (!fi)
+        {
+            DEG_LOG(E, u8"无法找到备份文件，请检查文件是否存在\n");
+            return;
+        }
+        fi.close();
+        std::string cmd = SFD_TOOL + " --no-gui --wait 30000 fdl " + FDL1_W527 + " 0x5500 fdl " + FDL2_W527 + " 0x9efffe00 exec w splloader " + SPL_W527 + " w boot Boot/boot.img reset";
+        DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
+        DEG_LOG(I, u8"执行命令: %s\n", cmd.c_str());
+        int ret = system(cmd.c_str());
+        if (ret != 0)
+        {
+            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret);
+        }
+        DEG_LOG(I, u8"刷写完毕！请检查是否有报错\n");
+        DEG_LOG(I, u8"请按任意键退出程序...\n");
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        std::cin.get();
+        return;
     }
     else if (selection == 4)
     {
@@ -185,7 +313,7 @@ void w527_patch()
     {
         DEG_LOG(W, u8"无效的选择，请重新运行程序\n");
     }
-      
+    return;
 }
 int main(int argc, char* argv[])
 {

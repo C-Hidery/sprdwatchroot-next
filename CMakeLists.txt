@@ -9,25 +9,34 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_executable(sprdwatchrooter-next
+# 设置输出文件名
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+add_executable(Start
     main.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/file_io.cpp
 )
 
-target_include_directories(sprdwatchrooter-next PRIVATE
+target_include_directories(Start PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/core
 )
 
-target_sources(sprdwatchrooter-next PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/file_io.cpp
-)
-
-add_library(file_io-lib STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/file_io.cpp
-)
-
-target_link_libraries(sprdwatchrooter-next PRIVATE file_io-lib)
-
 if(MSVC OR WIN32)
-    target_compile_options(sprdwatchrooter-next PRIVATE /utf-8)
+    target_compile_options(Start PRIVATE /utf-8)
+    # 确保输出文件名为 Start.exe
+    set_target_properties(Start PROPERTIES
+        OUTPUT_NAME "Start"
+        SUFFIX ".exe"
+    )
+else()
+    # 非Windows平台也设置输出名称
+    set_target_properties(Start PROPERTIES
+        OUTPUT_NAME "Start"
+    )
 endif()
 
+# 可选：设置版本信息
+set_target_properties(Start PROPERTIES
+    VERSION 1.0.0
+    SOVERSION 1
+)
