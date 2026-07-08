@@ -539,7 +539,7 @@ void sc9832_patch()
             return;
         }
         fi.close();
-        std::string cmd = SFD_TOOL + " --no-gui --wait 30000 fdl " + FDL1_SC9832 + " 0x5000 fdl " + FDL2_SC9832 + " 0x9efffe00 exec w boot Boot/boot.img w vbmeta Boot/vbmeta.img reset";
+        std::string cmd = SFD_TOOL + " --no-gui --wait 30000 fdl " + FDL1_SC9832 + " 0x5000 fdl " + FDL2_SC9832 + " 0x9efffe00 exec w vbmeta Boot/vbmeta.img w boot Boot/boot.img reset";
         DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
         DEG_LOG(I, u8"执行命令: %s\n", cmd.c_str());
         int ret = system(cmd.c_str());
