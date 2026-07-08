@@ -20,7 +20,7 @@
 
 using json = nlohmann::json;
 
-#define VERSION "0.2.1"
+#define VERSION "0.2.2"
 
 #ifdef _WIN32
 #define chdir _chdir
@@ -318,7 +318,8 @@ bool magisk_patch(const char* fn)
     if (fex)
     {
         fex.close();
-        if (!exec_cmd(std::string(MAGISKBOOT + "dtb extra patch"))) return false;
+        if (exec_cmd(std::string(MAGISKBOOT + " dtb extra test")))
+            if (!exec_cmd(std::string(MAGISKBOOT + " dtb extra patch"))) return false;
     }
     fex.close();
 
