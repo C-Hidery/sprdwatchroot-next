@@ -38,6 +38,8 @@ const std::string SFD_TOOL("sfd_tool");
 const std::string FDL1_W527("FDL\\W527\\fdl1.bin");
 const std::string FDL2_W527("FDL\\W527\\fdl2.bin");
 const std::string SPL_W527("FDL\\W527\\spl.bin");
+const std::string FDL1_SC9832("FDL\\SC9832\\fdl1.bin");
+const std::string FDL2_SC9832("FDL\\SC9832\\fdl2.bin");
 
 enum LogLevel : int {
     I = 0, // Info
@@ -52,6 +54,18 @@ enum LogLevel : int {
 bool copy_file(const char* src, const char* dst);
 // 前向声明 DEG_LOG 函数
 void DEG_LOG(LogLevel level, const char* __format, ...);
+
+bool exec_cmd(std::string cmd)
+{
+    DEG_LOG(I, u8"执行命令: %s\n", cmd.c_str());
+    int ret = system(cmd.c_str());
+    if (ret != 0)
+    {
+        DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret);
+        return false;
+    }
+    return true;
+}
 
 // UTF8ToANSI 函数实现保持不变...
 #ifdef _WIN32
@@ -145,6 +159,162 @@ bool copy_file(const char* src, const char* dst)
     }
     fi.close();
     fo.close();
+
+    return true;
+}
+
+bool magisk_patch(const char* fn)
+{
+    DEG_LOG(I, u8"Start to patch Magisk 27000 to boot\n");
+
+    EnhancedFile f = oxfopen_enhanced(MAGISKBOOT.c_str(), "rb");
+    if (!f)
+    {
+        DEG_LOG(E, u8"找不到%s，无法继续进行操作\n", MAGISKBOOT.c_str());
+        return false;
+    }
+    f.close();
+
+    std::string cmd = MAGISKBOOT + " unpack " + fn;
+    DEG_LOG(I, u8"执行命令: %s\n", cmd.c_str());
+    int ret = system(cmd.c_str());
+    if (ret != 0)
+    {
+        DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret);
+        return false;
+    }
+    EnhancedFile f2 = oxfopen_enhanced("ramdisk.cpio", "rb");
+    if (f2)
+    {
+        f2.close();
+        std::string cmdf = MAGISKBOOT + " cpio ramdisk.cpio test";
+        DEG_LOG(I, u8"执行命令: %s\n", cmdf.c_str());
+        int retf = system(cmdf.c_str());
+        if (retf == 1)
+        {
+            // 已被修补，还原
+            std::string cmdf2 = MAGISKBOOT + " cpio ramdisk.cpio \"extract .backup/.magisk config.orig\" restore";
+            DEG_LOG(I, u8"执行命令: %s\n", cmdf2.c_str());
+            int retf2 = system(cmdf2.c_str());
+            if (retf2 != 0)
+            {
+                DEG_LOG(E, u8"执行命令失败，错误码: %d\n", retf2);
+                return false;
+            }
+        }
+        else if (retf != 0)
+        {
+            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", retf);
+            return false;
+        }
+        if (!copy_file("ramdisk.cpio", "ramdisk.cpio.orig"))
+        {
+            DEG_LOG(E, u8"复制ramdisk.cpio失败，请检查文件是否存在\n");
+            return false;
+        }
+    }
+    f2.close();
+    EnhancedFile f3 = oxfopen_enhanced("config", "r");
+    if (!f3)
+    {
+        DEG_LOG(E, u8"无法打开config文件\n");
+        return false;
+    }
+    std::string configContent = "RECOVERYMODE=true";
+    f3 << configContent;
+    f3.close();
+
+    std::string cmdo = MAGISKBOOT + " cpio ramdisk.cpio";
+
+    std::string cmd2 = cmdo + " \"add 0750 init magiskinit\"";
+    DEG_LOG(I, u8"执行命令: %s\n", cmd2.c_str());
+    int ret2 = system(cmd2.c_str());
+    if (ret2 != 0)
+    {
+        DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret2);
+        return false;
+    }
+    std::string cmd3 = cmdo + " \"mkdir 0750 overlay.d\"";
+    DEG_LOG(I, u8"执行命令: %s\n", cmd3.c_str());
+    int ret3 = system(cmd3.c_str());
+    if (ret3 != 0)
+    {
+        DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret3);
+        return false;
+    }
+    std::string cmd4 = cmdo + " \"mkdir 0750 overlay.d/sbin\"";
+    DEG_LOG(I, u8"执行命令: %s\n", cmd4.c_str());
+    int ret4 = system(cmd4.c_str());
+    if (ret4 != 0)
+    {
+        DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret4);
+        return false;
+    }
+    std::string cmd5 = MAGISKBOOT + " compress=xz magisk magisk.xz";
+    DEG_LOG(I, u8"执行命令: %s\n", cmd5.c_str());
+    int ret5 = system(cmd5.c_str());
+    if (ret5 != 0)
+    {
+        DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret5);
+        return false;
+    }
+    std::string cmd6 = cmdo + " \"add 0644 overlay.d/sbin/magisk.xz magisk.xz\"";
+    DEG_LOG(I, u8"执行命令: %s\n", cmd6.c_str());
+    int ret6 = system(cmd6.c_str());
+    if (ret6 != 0)
+    {
+        DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret6);
+        return false;
+    }
+    EnhancedFile f4 = oxfopen_enhanced("stub.apk", "rb");
+    if (f4)
+    {
+        f4.close();
+        std::string cmdi = MAGISKBOOT + " compress=xz stub.apk stub.xz";
+        DEG_LOG(I, u8"执行命令: %s\n", cmd6.c_str());
+        int reti = system(cmdi.c_str());
+        if (reti != 0)
+        {
+            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", reti);
+            return false;
+        }
+    }
+    f4.close();
+    std::string cmd7 = cmdo + " \"add 0644 overlay.d/sbin/stub.xz stub.xz\"";
+    if (!exec_cmd(cmd7)) return false;
+
+    EnhancedFile f5 = oxfopen_enhanced("init-ld", "rb");
+
+    if (f5)
+    {
+        f5.close();
+        std::string cmdp = MAGISKBOOT + " compress=xz init-ld init-ld.xz";
+        if (!exec_cmd(cmdp)) return false;
+    }
+    f5.close();
+    
+    EnhancedFile fp = oxfopen_enhanced("init-ld.xz", "rb");
+    if (fp)
+    {
+        fp.close();
+        if (!exec_cmd(std::string(cmdo + " \"add 0644 overlay.d/sbin/init-ld.xz init-ld.xz\""))) return false;
+    }
+    fp.close();
+
+    if (!exec_cmd(std::string(cmdo + " \"patch\""))) return false;
+    if (!exec_cmd(std::string(cmdo + " \"backup ramdisk.cpio.orig\""))) return false;
+    if (!exec_cmd(std::string(cmdo + " \"mkdir 000 .backup\""))) return false;
+    if (!exec_cmd(std::string(cmdo + " \"add 000 .backup/.magisk config\""))) return false;
+
+    EnhancedFile fex = oxfopen_enhanced("extra", "rb");
+    if (fex)
+    {
+        fex.close();
+        if (!exec_cmd(std::string(MAGISKBOOT + "dtb extra patch"))) return false;
+    }
+    fex.close();
+
+    if (!exec_cmd(std::string(MAGISKBOOT + " repack " + fn + " new-boot.img"))) return false;
 
     return true;
 }
@@ -286,6 +456,113 @@ void w527_patch()
     return;
 }
 
+void sc9832_patch()
+{
+    chdir("Res");
+
+    DEG_LOG(I, u8"------------------------------------------\n");
+    DEG_LOG(I, u8"Spreadtrum SL8541E (SC9832E) ROOT 处理程序\n");
+    DEG_LOG(I, u8"[1] 执行AVB修补(可选)\n");
+    DEG_LOG(I, u8"[2] 执行ROOT修补\n");
+    DEG_LOG(I, u8"[3] 救砖\n");
+    DEG_LOG(I, u8"[4] 退出程序\n");
+    DEG_LOG(I, u8"------------------------------------------\n");
+
+    int selection;
+    std::cin >> selection;
+    
+    // 清除输入缓冲区的换行符
+    std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+
+    if (selection == 1)
+    {
+        std::string cmd = SFD_TOOL + " --no-gui --wait 30000 fdl " + FDL1_SC9832 + " 0x5000 fdl " + FDL2_SC9832 + " 0x9efffe00 exec dis_avb_tos reset";
+        DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
+        DEG_LOG(I, u8"执行命令: %s\n", cmd.c_str());
+        int ret = system(cmd.c_str());
+        if (ret != 0)
+        {
+            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret);
+        }
+        DEG_LOG(I, u8"AVB修补完成，请重新运行程序以继续ROOT\n");
+        return;
+    }
+    else if (selection == 2)
+    {
+        DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
+        DEG_LOG(I, u8"开始读取Boot/Vbmeta分区\n");
+        if (!exec_cmd(std::string(SFD_TOOL + " --no-gui --wait 30000 fdl " + FDL1_SC9832 + " 0x5000 fdl " + FDL2_SC9832 + " 0x9efffe00 exec path Boot r boot r vbmeta reset"))) return;
+        DEG_LOG(I, u8"手表已重启\n");
+
+        if(!copy_file("Boot/boot.img", "boot.img"))
+        {
+            DEG_LOG(E, u8"复制boot.img失败\n");
+            return;
+        }
+        if(!copy_file("Boot/vbmeta.img", "vbmeta.img"))
+        {
+            DEG_LOG(E, u8"复制vbmeta.img失败\n");
+            return;
+        }
+
+        DEG_LOG(I, u8"开始修补Boot分区\n");
+        if (!magisk_patch("boot.img"))
+        {
+            DEG_LOG(E, u8"修补失败\n");
+            return;
+        }
+
+        EnhancedFile fnew = oxfopen_enhanced("new-boot.img", "rb");
+        if (fnew)
+        {
+            fnew.close();
+            DEG_LOG(I, u8"开始签名\n");
+            if (!exec_cmd(std::string("python sign_image.py -i new-boot.img"))) return;
+            DEG_LOG(I, u8"开始刷入Boot分区\n");
+            DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
+            if (!exec_cmd(std::string(SFD_TOOL + " --no-gui --wait 30000 fdl " + FDL1_SC9832 + " 0x5000 fdl " + FDL2_SC9832 + " 0x9efffe00 exec w vbmeta vbmeta-sign-custom.img w boot new-boot.img reset"))) return;
+            DEG_LOG(I, u8"刷写完毕！请检查是否有报错\n");
+            return;
+        }
+        else
+        {
+            DEG_LOG(E, u8"找不到new-boot.img\n");
+            return;
+        }
+    }
+    else if (selection == 3)
+    {
+        EnhancedFile fi = oxfopen_enhanced("Boot/boot.img", "rb");
+        if (!fi)
+        {
+            DEG_LOG(E, u8"无法找到备份文件，请检查文件是否存在\n");
+            return;
+        }
+        fi.close();
+        std::string cmd = SFD_TOOL + " --no-gui --wait 30000 fdl " + FDL1_SC9832 + " 0x5000 fdl " + FDL2_SC9832 + " 0x9efffe00 exec w boot Boot/boot.img w vbmeta Boot/vbmeta.img reset";
+        DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
+        DEG_LOG(I, u8"执行命令: %s\n", cmd.c_str());
+        int ret = system(cmd.c_str());
+        if (ret != 0)
+        {
+            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret);
+        }
+        DEG_LOG(I, u8"刷写完毕！请检查是否有报错\n");
+        DEG_LOG(I, u8"请按任意键退出程序...\n");
+        std::cin.get();
+        return;
+    }
+    else if (selection == 4)
+    {
+        DEG_LOG(I, u8"退出程序\n");
+    }
+    else
+    {
+        DEG_LOG(W, u8"无效的选择，请重新运行程序\n");
+    }
+    return;
+}
+
 int main(int argc, char* argv[])
 {
     setlocale(LC_ALL, "zh_CN");
@@ -316,6 +593,7 @@ int main(int argc, char* argv[])
     switch (selection)
     {
     case 1:
+        sc9832_patch();
         break;
     case 2:
         break;
@@ -327,6 +605,10 @@ int main(int argc, char* argv[])
     default:
         break;
     }
+
+    DEG_LOG(I, u8"按任意键继续\n");
+    std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+    std::cin.get();
 
     return 0;
 }
