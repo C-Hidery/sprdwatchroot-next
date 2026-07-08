@@ -68,7 +68,6 @@ jobs:
             # 如果直接下载的是文件
             zip -r sprdwatchroot-next-windows.zip .
           fi
-        working-directory: output
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
