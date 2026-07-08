@@ -6,14 +6,17 @@
 #include <string>
 #ifdef _WIN32
 #include <windows.h>
+#include <direct.h>  // 添加 _chdir 所需的头文件
 #endif
 #include <thread>
 #include <new>
 #include <cstdlib>
 #include <signal.h>
+#include <cstdarg>
+#include <vector>    // 添加 vector 头文件
+#include <limits>    // 添加 limits 头文件
 #include "core/file_io.h"
 #include "third_party/nlohmann/json.hpp"
-#include <cstdarg>
 
 using json = nlohmann::json;
 
@@ -22,6 +25,9 @@ using json = nlohmann::json;
 #ifdef _WIN32
 #define chdir _chdir
 #endif
+
+// 前向声明 DEG_LOG 函数
+void DEG_LOG(LogLevel level, const char* __format, ...);
 
 // 外部工具链/文件硬编码
 const std::string KP_IMG_PATCHER("kptools.exe");
@@ -45,6 +51,73 @@ enum LogLevel : int {
     OP = 5  // Operation
 };
 
+// 前向声明 copy_file 函数
+bool copy_file(const char* src, const char* dst);
+
+// UTF8ToANSI 函数实现保持不变...
+#ifdef _WIN32
+std::string UTF8ToANSI(const std::string& utf8Str) {
+    if (utf8Str.empty()) return "";
+    
+    int wideLen = MultiByteToWideChar(
+        CP_UTF8, 0, utf8Str.c_str(), -1, nullptr, 0
+    );
+    
+    if (wideLen == 0) {
+        return utf8Str;
+    }
+    
+    std::vector<wchar_t> wideBuf(wideLen);
+    MultiByteToWideChar(
+        CP_UTF8, 0, utf8Str.c_str(), -1, wideBuf.data(), wideLen
+    );
+    
+    int ansiLen = WideCharToMultiByte(
+        CP_ACP, 0, wideBuf.data(), -1, nullptr, 0, nullptr, nullptr
+    );
+    
+    if (ansiLen == 0) {
+        return utf8Str;
+    }
+    
+    std::vector<char> ansiBuf(ansiLen);
+    WideCharToMultiByte(
+        CP_ACP, 0, wideBuf.data(), -1, ansiBuf.data(), ansiLen, nullptr, nullptr
+    );
+    
+    return std::string(ansiBuf.data(), ansiLen - 1);
+}
+#endif
+
+// Print log messages with a specific log level
+void DEG_LOG(LogLevel level, const char* __format, ...)
+{
+    printf("[%s] ", (level == LogLevel::I) ? "INFO" :
+                    (level == LogLevel::W) ? "WARN" :
+                    (level == LogLevel::E) ? "ERROR" :
+                    (level == LogLevel::DE) ? "DEBUG" : "UNDEF");
+    va_list args;
+    va_start(args, __format);
+#ifdef _WIN32
+    va_list args_copy;
+    va_copy(args_copy, args);
+    
+    int len = vsnprintf(nullptr, 0, __format, args_copy);
+    va_end(args_copy);
+    
+    if (len > 0) {
+        std::vector<char> utf8Buffer(len + 1);
+        vsnprintf(utf8Buffer.data(), utf8Buffer.size(), __format, args);
+        
+        std::string gbkStr = UTF8ToANSI(std::string(utf8Buffer.data()));
+        printf("%s", gbkStr.c_str());
+    }
+#else
+    vprintf(__format, args);
+#endif
+    va_end(args);
+}
+
 bool copy_file(const char* src, const char* dst)
 {
     EnhancedFile fi = oxfopen_enhanced(src, "rb");
@@ -59,7 +132,7 @@ bool copy_file(const char* src, const char* dst)
         DEG_LOG(E, u8"无法创建目标文件: %s\n", dst);
         return false;
     }
-    const size_t bufferSize = 8192; // 8KB 缓冲区
+    const size_t bufferSize = 8192;
     char buffer[bufferSize];
     size_t bytesRead;
     while ((bytesRead = fi.read(buffer, 1, bufferSize)) > 0)
@@ -77,109 +150,7 @@ bool copy_file(const char* src, const char* dst)
     return true;
 }
 
-#ifdef _WIN32
-std::string UTF8ToANSI(const std::string& utf8Str) {
-    if (utf8Str.empty()) return "";
-    
-    // 步骤1: UTF-8 -> UTF-16 (宽字符)
-    int wideLen = MultiByteToWideChar(
-        CP_UTF8,               // 源编码是 UTF-8
-        0,                     // 标志位，0 即可
-        utf8Str.c_str(),       // 输入字符串
-        -1,                    // 自动计算长度（包含结尾 '\0'）
-        nullptr,               // 第一次调用，只获取长度
-        0
-    );
-    
-    if (wideLen == 0) {
-        // 转换失败，返回原始字符串（降级处理）
-        return utf8Str;
-    }
-    
-    std::vector<wchar_t> wideBuf(wideLen);
-    MultiByteToWideChar(
-        CP_UTF8,
-        0,
-        utf8Str.c_str(),
-        -1,
-        wideBuf.data(),
-        wideLen
-    );
-    
-    // 步骤2: UTF-16 -> ANSI (GBK, 即 CP_ACP)
-    int ansiLen = WideCharToMultiByte(
-        CP_ACP,                // 目标编码：系统默认 ANSI (Windows 中文下就是 GBK)
-        0,
-        wideBuf.data(),        // 输入宽字符
-        -1,                    // 自动计算长度
-        nullptr,
-        0,
-        nullptr,
-        nullptr
-    );
-    
-    if (ansiLen == 0) {
-        return utf8Str;
-    }
-    
-    std::vector<char> ansiBuf(ansiLen);
-    WideCharToMultiByte(
-        CP_ACP,
-        0,
-        wideBuf.data(),
-        -1,
-        ansiBuf.data(),
-        ansiLen,
-        nullptr,
-        nullptr
-    );
-    
-    // 注意：ansiBuf 包含结尾的 '\0'，但 string 构造时会忽略它
-    return std::string(ansiBuf.data(), ansiLen - 1);
-}
-#endif
-
-// Print log messages with a specific log level
-void DEG_LOG(LogLevel level, const char* __format, ...)
-{
-    printf("[%s] ", (level == LogLevel::I) ? "INFO" :
-                    (level == LogLevel::W) ? "WARN" :
-                    (level == LogLevel::E) ? "ERROR" :
-                    (level == LogLevel::DE) ? "DEBUG" : "UNDEF");
-    va_list args;
-    va_start(args, __format);
-#ifdef _WIN32
-    // ===== Windows 平台：需要进行 UTF-8 -> GBK 转码 =====
-    
-    // 2.1 先用 vprintf 获取格式化后的完整字符串（UTF-8 编码）
-    va_list args_copy;
-    va_copy(args_copy, args);
-    
-    // 计算格式化后字符串的长度
-    int len = vsnprintf(nullptr, 0, __format, args_copy);
-    va_end(args_copy);
-    
-    if (len > 0) {
-        // 分配缓冲区
-        std::vector<char> utf8Buffer(len + 1);
-        vsnprintf(utf8Buffer.data(), utf8Buffer.size(), __format, args);
-        
-        // 2.2 将 UTF-8 字符串转换为 GBK
-        std::string gbkStr = UTF8ToANSI(std::string(utf8Buffer.data()));
-        
-        // 2.3 输出 GBK 编码的中文
-        printf("%s", gbkStr.c_str());
-    }
-    
-#else
-    // ===== Linux / macOS 平台：直接输出 UTF-8 =====
-    vprintf(__format, args);
-#endif
-    va_end(args);
-}
-
-// 处理器特定处理函数
-
+// w527_patch 函数保持不变，但修复 std::cin.ignore 的问题
 void w527_patch()
 {
     chdir("Res");
@@ -194,6 +165,9 @@ void w527_patch()
 
     int selection;
     std::cin >> selection;
+    
+    // 清除输入缓冲区的换行符
+    std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
 
     if (selection == 1)
     {
@@ -264,8 +238,7 @@ void w527_patch()
         }
         DEG_LOG(I, u8"签名完成\n");
         DEG_LOG(I, u8"请按任意键继续...\n");
-        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-        std::cin.get();
+        std::cin.get();  // 等待用户按键
         DEG_LOG(I, u8"开始刷入Boot分区\n");
         std::string cmd7 = SFD_TOOL + " --no-gui --wait 30000 fdl " + FDL1_W527 + " 0x5500 fdl " + FDL2_W527 + " 0x9efffe00 exec w splloader " + SPL_W527 + " w boot new-boot.img reset";
         DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
@@ -278,7 +251,6 @@ void w527_patch()
         DEG_LOG(I, u8"超级用户密钥:w527root741852\n");
         DEG_LOG(I, u8"刷写完毕！请检查是否有报错\n");
         DEG_LOG(I, u8"请按任意键退出程序...\n");
-        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
         std::cin.get();
         return;
     }
@@ -301,7 +273,6 @@ void w527_patch()
         }
         DEG_LOG(I, u8"刷写完毕！请检查是否有报错\n");
         DEG_LOG(I, u8"请按任意键退出程序...\n");
-        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
         std::cin.get();
         return;
     }
@@ -315,6 +286,7 @@ void w527_patch()
     }
     return;
 }
+
 int main(int argc, char* argv[])
 {
     setlocale(LC_ALL, "zh_CN");
@@ -340,6 +312,7 @@ int main(int argc, char* argv[])
 
     int selection;
     std::cin >> selection;
+    std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
 
     switch (selection)
     {
@@ -355,8 +328,6 @@ int main(int argc, char* argv[])
     default:
         break;
     }
-
-
 
     return 0;
 }
