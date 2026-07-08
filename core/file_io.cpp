@@ -1,6 +1,6 @@
 /*
  * SPDX-License-Identifier: GPL-3.0-or-later
- * SFDTool Copyright (C) 2026 Ryan Crepa
+ * sprdwatchroot-next Copyright (C) 2026 Ryan Crepa
  */
 #include "file_io.h"
 #include <stdlib.h>
