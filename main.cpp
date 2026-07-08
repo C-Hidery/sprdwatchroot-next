@@ -50,6 +50,11 @@ enum LogLevel : int {
     OP = 5  // Operation
 };
 
+std::string custom_FDL1;
+std::string custom_FDL2;
+std::string custom_FDL1_ADDR;
+std::string custom_FDL2_ADDR;
+
 // 前向声明 copy_file 函数
 bool copy_file(const char* src, const char* dst);
 // 前向声明 DEG_LOG 函数
@@ -563,6 +568,144 @@ void sc9832_patch()
     return;
 }
 
+void custom_patch()
+{
+    chdir("Res");
+
+    DEG_LOG(I, u8"输入FDL1文件地址\n");
+    std::cin >> custom_FDL1;
+    DEG_LOG(I, u8"输入FDL2文件地址\n");
+    std::cin >> custom_FDL2;
+    DEG_LOG(I, u8"输入FDL1发送地址\n");
+    std::cin >> custom_FDL1_ADDR;
+    DEG_LOG(I, u8"输入FDL2发送地址\n");
+    std::cin >> custom_FDL2_ADDR;
+
+    bool isAVB = false;
+    bool isBSP = false;
+
+    DEG_LOG(I, u8"签名方式？\n");
+
+    DEG_LOG(I, u8"[1] AVB\n");
+    DEG_LOG(I, u8"[2] BSP\n");
+    int n;
+    std::cin >> n;
+    
+    if (n == 1) isAVB = true;
+    else if (n == 2) isBSP = true;
+    else 
+    {
+        DEG_LOG(I, u8"无效输入\n");
+        return;
+    }
+
+
+    DEG_LOG(I, u8"------------------------------------------\n");
+    DEG_LOG(I, u8"自定义 ROOT 处理程序\n");
+    DEG_LOG(I, u8"[1] 执行AVB修补(可选)\n");
+    DEG_LOG(I, u8"[2] 执行ROOT修补\n");
+    DEG_LOG(I, u8"[3] 救砖\n");
+    DEG_LOG(I, u8"[4] 退出程序\n");
+    DEG_LOG(I, u8"------------------------------------------\n");
+
+    int selection;
+    std::cin >> selection;
+    
+    // 清除输入缓冲区的换行符
+    std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+
+    if (selection == 1)
+    {
+        std::string cmd = SFD_TOOL + " --no-gui --wait 30000 fdl " + custom_FDL1 + " " + custom_FDL1_ADDR + " fdl " + custom_FDL2 + " " + custom_FDL2_ADDR + " exec dis_avb_tos reset";
+        DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
+        DEG_LOG(I, u8"执行命令: %s\n", cmd.c_str());
+        int ret = system(cmd.c_str());
+        if (ret != 0)
+        {
+            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret);
+        }
+        DEG_LOG(I, u8"AVB修补完成，请重新运行程序以继续ROOT\n");
+        return;
+    }
+    else if (selection == 2)
+    {
+        DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
+        DEG_LOG(I, u8"开始读取Boot/Vbmeta分区\n");
+        if (!exec_cmd(std::string(SFD_TOOL + " --no-gui --wait 30000 fdl " + custom_FDL1 + " " + custom_FDL1_ADDR + " fdl " + custom_FDL2 + " " + custom_FDL2_ADDR + " exec path Boot r boot r vbmeta reset"))) return;
+        DEG_LOG(I, u8"手表已重启\n");
+
+        if(!copy_file("Boot/boot.img", "boot.img"))
+        {
+            DEG_LOG(E, u8"复制boot.img失败\n");
+            return;
+        }
+        if(!copy_file("Boot/vbmeta.img", "vbmeta.img"))
+        {
+            DEG_LOG(E, u8"复制vbmeta.img失败\n");
+            return;
+        }
+
+        DEG_LOG(I, u8"开始修补Boot分区\n");
+        if (!magisk_patch("boot.img"))
+        {
+            DEG_LOG(E, u8"修补失败\n");
+            return;
+        }
+
+        EnhancedFile fnew = oxfopen_enhanced("new-boot.img", "rb");
+        if (fnew)
+        {
+            fnew.close();
+            DEG_LOG(I, u8"开始签名\n");
+            if (isAVB)
+                if (!exec_cmd(std::string("python sign_image.py -i new-boot.img"))) return;
+            else if (isBSP)
+                if (!exec_cmd(std::string("python avbtool.py add_hash_footer --image new-boot.img --partition_size " + BOOT_SIZE + " --algorithm " + ALGORITHM + " --key " + KEY_BOOT))) return;
+            DEG_LOG(I, u8"开始刷入Boot分区\n");
+            DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
+            if (!exec_cmd(std::string(SFD_TOOL + " --no-gui --wait 30000 fdl " + custom_FDL1 + " " + custom_FDL1_ADDR + " fdl " + custom_FDL2 + " " + custom_FDL2_ADDR + " exec w vbmeta vbmeta-sign-custom.img w boot new-boot.img reset"))) return;
+            DEG_LOG(I, u8"刷写完毕！请检查是否有报错\n");
+            return;
+        }
+        else
+        {
+            DEG_LOG(E, u8"找不到new-boot.img\n");
+            return;
+        }
+    }
+    else if (selection == 3)
+    {
+        EnhancedFile fi = oxfopen_enhanced("Boot/boot.img", "rb");
+        if (!fi)
+        {
+            DEG_LOG(E, u8"无法找到备份文件，请检查文件是否存在\n");
+            return;
+        }
+        fi.close();
+        std::string cmd = SFD_TOOL + " --no-gui --wait 30000 fdl " + custom_FDL1 + " " + custom_FDL1_ADDR + " fdl " + custom_FDL2 + " " + custom_FDL2_ADDR + " exec w vbmeta Boot/vbmeta.img w boot Boot/boot.img reset";
+        DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
+        DEG_LOG(I, u8"执行命令: %s\n", cmd.c_str());
+        int ret = system(cmd.c_str());
+        if (ret != 0)
+        {
+            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret);
+        }
+        DEG_LOG(I, u8"刷写完毕！请检查是否有报错\n");
+        DEG_LOG(I, u8"请按任意键退出程序...\n");
+        std::cin.get();
+        return;
+    }
+    else if (selection == 4)
+    {
+        DEG_LOG(I, u8"退出程序\n");
+    }
+    else
+    {
+        DEG_LOG(W, u8"无效的选择，请重新运行程序\n");
+    }
+    return;
+}
+
 int main(int argc, char* argv[])
 {
     setlocale(LC_ALL, "zh_CN");
@@ -578,13 +721,13 @@ int main(int argc, char* argv[])
     std::cout << "-------------------------------------------" << std::endl;
     std::cout << "Sprd Watch Rooter" << std::endl;
     std::cout << "\t\tCopyright (C) 2026 Ryan Crepa" << std::endl;
+    std::cout << "\t\tResources By TWDXT" << std::endl;
     std::cout << "-------------------------------------------" << std::endl;
 
     DEG_LOG(I, u8"请选择您的处理器：\n");
     DEG_LOG(I, u8"[1] Spreadtrum SL8541E (SC9832E)\n");
-    DEG_LOG(I, u8"[2] Spreadtrum W377E\n");
-    DEG_LOG(I, u8"[3] Spreadtrum W527\n");
-    DEG_LOG(I, u8"[4] 自定义FDL文件\n");
+    DEG_LOG(I, u8"[2] Spreadtrum W527\n");
+    DEG_LOG(I, u8"[3] 自定义FDL文件\n");
 
     int selection;
     std::cin >> selection;
@@ -596,11 +739,10 @@ int main(int argc, char* argv[])
         sc9832_patch();
         break;
     case 2:
-        break;
-    case 3:
         w527_patch();
         break;
-    case 4:
+    case 3:
+        custom_patch();
         break;
     default:
         break;
