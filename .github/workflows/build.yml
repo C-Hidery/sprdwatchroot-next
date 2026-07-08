@@ -10,7 +10,6 @@ on:
     branches:
       - master
 
-
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
@@ -20,34 +19,36 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      
       - name: Setup MSVS
         uses: TheMrMilchmann/setup-msvc-dev@v3
         with:
           arch: x64
+      
       - name: Build
         run: |
           cmake -S . -B build -G "Visual Studio 18 2026" -A x64
           cmake --build build --config Release
+      
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: sprdwatchroot-next-windows
           path: ./build/bin/Release/
+
   release:
+    # 只在 tag 推送时触发，且需要 build job 成功
     needs: build
     permissions:
       contents: write
     runs-on: ubuntu-latest
+    # 关键：只在 tag 推送时运行
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
 
       - name: Set Release Tag
         run: echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          path: master
 
       - name: Download artifact
         uses: actions/download-artifact@v4
@@ -59,7 +60,15 @@ jobs:
       - name: Prepare Release
         run: |
           cd output
-          zip -r sprdwatchroot-next-windows.zip sprdwatchroot-next-windows
+          # 如果下载的是单个 exe 文件，需要调整
+          if [ -d "sprdwatchroot-next-windows" ]; then
+            cd sprdwatchroot-next-windows
+            zip -r ../sprdwatchroot-next-windows.zip .
+          else
+            # 如果直接下载的是文件
+            zip -r sprdwatchroot-next-windows.zip .
+          fi
+        working-directory: output
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -73,4 +82,3 @@ jobs:
             ## Release Notes
             - Windows build of sprdwatchroot-next
           files: output/sprdwatchroot-next-windows.zip
-        
