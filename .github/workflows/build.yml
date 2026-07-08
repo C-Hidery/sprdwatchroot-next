@@ -1,0 +1,76 @@
+name: Build for Windows
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - master
+
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup MSVS
+        uses: TheMrMilchmann/setup-msvc-dev@v3
+        with:
+          arch: x64
+      - name: Build
+        run: |
+          cmake -S . -B build -G "Visual Studio 18 2026" -A x64
+          cmake --build build --config Release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: sprdwatchroot-next-windows
+          path: ./build/bin/Release/
+  release:
+    needs: build
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set Release Tag
+        run: echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          path: master
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          path: output
+          pattern: sprdwatchroot-next-windows
+          merge-multiple: false
+
+      - name: Prepare Release
+        run: |
+          cd output
+          zip -r sprdwatchroot-next-windows.zip sprdwatchroot-next-windows
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_TAG }}
+          draft: false
+          prerelease: false
+          target_commitish: ${{ github.sha }}
+          body: |
+            ## Release Notes
+            - Windows build of sprdwatchroot-next
+          files: output/sprdwatchroot-next-windows.zip
+        
