@@ -26,9 +26,6 @@ using json = nlohmann::json;
 #define chdir _chdir
 #endif
 
-// 前向声明 DEG_LOG 函数
-void DEG_LOG(LogLevel level, const char* __format, ...);
-
 // 外部工具链/文件硬编码
 const std::string KP_IMG_PATCHER("kptools.exe");
 const std::string KP_IMG("kpimg-android.kpimg-android");
@@ -53,6 +50,8 @@ enum LogLevel : int {
 
 // 前向声明 copy_file 函数
 bool copy_file(const char* src, const char* dst);
+// 前向声明 DEG_LOG 函数
+void DEG_LOG(LogLevel level, const char* __format, ...);
 
 // UTF8ToANSI 函数实现保持不变...
 #ifdef _WIN32
