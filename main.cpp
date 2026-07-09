@@ -20,7 +20,7 @@
 
 using json = nlohmann::json;
 
-#define VERSION "0.2.4"
+#define VERSION "0.2.5"
 
 #ifdef _WIN32
 #define chdir _chdir
@@ -227,8 +227,8 @@ bool magisk_patch(const char* fn)
         return false;
     }
     std::string configContent = 
-    "KEEPVERITY=true\n"
-    "KEEPFORCEENCRYPT=true\n"
+    "KEEPVERITY=false\n"
+    "KEEPFORCEENCRYPT=false\n"
     "RECOVERYMODE=false";
     f3 << configContent;
     f3.close();
@@ -314,15 +314,6 @@ bool magisk_patch(const char* fn)
     if (!exec_cmd(std::string(cmdo + " \"backup ramdisk.cpio.orig\""))) return false;
     if (!exec_cmd(std::string(cmdo + " \"mkdir 000 .backup\""))) return false;
     if (!exec_cmd(std::string(cmdo + " \"add 000 .backup/.magisk config\""))) return false;
-
-    EnhancedFile fex = oxfopen_enhanced("extra", "rb");
-    if (fex)
-    {
-        fex.close();
-        if (exec_cmd(std::string(MAGISKBOOT + " dtb extra test")))
-            if (!exec_cmd(std::string(MAGISKBOOT + " dtb extra patch"))) return false;
-    }
-    fex.close();
 
     if (!exec_cmd(std::string(MAGISKBOOT + " repack " + fn + " new-boot.img"))) return false;
 
