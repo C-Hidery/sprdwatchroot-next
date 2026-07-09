@@ -20,7 +20,7 @@
 
 using json = nlohmann::json;
 
-#define VERSION "0.2.2"
+#define VERSION "0.2.3"
 
 #ifdef _WIN32
 #define chdir _chdir
