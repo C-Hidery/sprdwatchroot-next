@@ -20,7 +20,7 @@
 
 using json = nlohmann::json;
 
-#define VERSION "0.2.3"
+#define VERSION "0.2.4"
 
 #ifdef _WIN32
 #define chdir _chdir
@@ -66,6 +66,7 @@ bool exec_cmd(std::string cmd)
     int ret = system(cmd.c_str());
     if (ret != 0)
     {
+        if (strstr(cmd.c_str(), "sfd_tool")) return true;
         DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret);
         return false;
     }
@@ -353,10 +354,6 @@ void w527_patch()
         DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
         DEG_LOG(I, u8"执行命令: %s\n", cmd.c_str());
         int ret = system(cmd.c_str());
-        if (ret != 0)
-        {
-            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret);
-        }
         DEG_LOG(I, u8"AVB修补完成，请重新运行程序以继续ROOT\n");
         return;
     }
@@ -368,10 +365,6 @@ void w527_patch()
         DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
         DEG_LOG(I, u8"执行命令: %s\n", cmd.c_str());
         int ret = system(cmd.c_str());
-        if (ret != 0)
-        {
-            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret);
-        }
         DEG_LOG(I, u8"手表已重启\n");
         DEG_LOG(I, u8"开始修补Boot镜像\n");
         if (!copy_file("Boot/boot.img", "boot.img"))
@@ -422,10 +415,6 @@ void w527_patch()
         DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
         DEG_LOG(I, u8"执行命令: %s\n", cmd7.c_str());
         int ret7 = system(cmd7.c_str());
-        if (ret7 != 0)
-        {
-            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret7);
-        }
         DEG_LOG(I, u8"超级用户密钥:w527root741852\n");
         DEG_LOG(I, u8"刷写完毕！请检查是否有报错\n");
         DEG_LOG(I, u8"请按任意键退出程序...\n");
@@ -445,10 +434,6 @@ void w527_patch()
         DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
         DEG_LOG(I, u8"执行命令: %s\n", cmd.c_str());
         int ret = system(cmd.c_str());
-        if (ret != 0)
-        {
-            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret);
-        }
         DEG_LOG(I, u8"刷写完毕！请检查是否有报错\n");
         DEG_LOG(I, u8"请按任意键退出程序...\n");
         std::cin.get();
@@ -489,10 +474,6 @@ void sc9832_patch()
         DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
         DEG_LOG(I, u8"执行命令: %s\n", cmd.c_str());
         int ret = system(cmd.c_str());
-        if (ret != 0)
-        {
-            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret);
-        }
         DEG_LOG(I, u8"AVB修补完成，请重新运行程序以继续ROOT\n");
         return;
     }
@@ -500,7 +481,7 @@ void sc9832_patch()
     {
         DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
         DEG_LOG(I, u8"开始读取Boot/Vbmeta分区\n");
-        if (!exec_cmd(std::string(SFD_TOOL + " --no-gui --wait 30000 fdl " + FDL1_SC9832 + " 0x5000 fdl " + FDL2_SC9832 + " 0x9efffe00 exec path Boot r boot r vbmeta reset"))) return;
+        exec_cmd(std::string(SFD_TOOL + " --no-gui --wait 30000 fdl " + FDL1_SC9832 + " 0x5000 fdl " + FDL2_SC9832 + " 0x9efffe00 exec path Boot r boot r vbmeta reset"));
         DEG_LOG(I, u8"手表已重启\n");
 
         if(!copy_file("Boot/boot.img", "boot.img"))
@@ -529,7 +510,7 @@ void sc9832_patch()
             if (!exec_cmd(std::string("python sign_image.py -i new-boot.img"))) return;
             DEG_LOG(I, u8"开始刷入Boot分区\n");
             DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
-            if (!exec_cmd(std::string(SFD_TOOL + " --no-gui --wait 30000 fdl " + FDL1_SC9832 + " 0x5000 fdl " + FDL2_SC9832 + " 0x9efffe00 exec w vbmeta vbmeta-sign-custom.img w boot new-boot.img reset"))) return;
+            exec_cmd(std::string(SFD_TOOL + " --no-gui --wait 30000 fdl " + FDL1_SC9832 + " 0x5000 fdl " + FDL2_SC9832 + " 0x9efffe00 exec w vbmeta vbmeta-sign-custom.img w boot new-boot.img reset"));
             DEG_LOG(I, u8"刷写完毕！请检查是否有报错\n");
             return;
         }
@@ -551,11 +532,7 @@ void sc9832_patch()
         std::string cmd = SFD_TOOL + " --no-gui --wait 30000 fdl " + FDL1_SC9832 + " 0x5000 fdl " + FDL2_SC9832 + " 0x9efffe00 exec w vbmeta Boot/vbmeta.img w boot Boot/boot.img reset";
         DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
         DEG_LOG(I, u8"执行命令: %s\n", cmd.c_str());
-        int ret = system(cmd.c_str());
-        if (ret != 0)
-        {
-            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret);
-        }
+        exec_cmd(cmd);
         DEG_LOG(I, u8"刷写完毕！请检查是否有报错\n");
         DEG_LOG(I, u8"请按任意键退出程序...\n");
         std::cin.get();
@@ -624,10 +601,6 @@ void custom_patch()
         DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
         DEG_LOG(I, u8"执行命令: %s\n", cmd.c_str());
         int ret = system(cmd.c_str());
-        if (ret != 0)
-        {
-            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret);
-        }
         DEG_LOG(I, u8"AVB修补完成，请重新运行程序以继续ROOT\n");
         return;
     }
@@ -635,7 +608,7 @@ void custom_patch()
     {
         DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
         DEG_LOG(I, u8"开始读取Boot/Vbmeta分区\n");
-        if (!exec_cmd(std::string(SFD_TOOL + " --no-gui --wait 30000 fdl " + custom_FDL1 + " " + custom_FDL1_ADDR + " fdl " + custom_FDL2 + " " + custom_FDL2_ADDR + " exec path Boot r boot r vbmeta reset"))) return;
+        exec_cmd(std::string(SFD_TOOL + " --no-gui --wait 30000 fdl " + custom_FDL1 + " " + custom_FDL1_ADDR + " fdl " + custom_FDL2 + " " + custom_FDL2_ADDR + " exec path Boot r boot r vbmeta reset"));
         DEG_LOG(I, u8"手表已重启\n");
 
         if(!copy_file("Boot/boot.img", "boot.img"))
@@ -667,7 +640,7 @@ void custom_patch()
                 if (!exec_cmd(std::string("python avbtool.py add_hash_footer --image new-boot.img --partition_size " + BOOT_SIZE + " --algorithm " + ALGORITHM + " --key " + KEY_BOOT))) return;
             DEG_LOG(I, u8"开始刷入Boot分区\n");
             DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
-            if (!exec_cmd(std::string(SFD_TOOL + " --no-gui --wait 30000 fdl " + custom_FDL1 + " " + custom_FDL1_ADDR + " fdl " + custom_FDL2 + " " + custom_FDL2_ADDR + " exec w vbmeta vbmeta-sign-custom.img w boot new-boot.img reset"))) return;
+            exec_cmd(std::string(SFD_TOOL + " --no-gui --wait 30000 fdl " + custom_FDL1 + " " + custom_FDL1_ADDR + " fdl " + custom_FDL2 + " " + custom_FDL2_ADDR + " exec w vbmeta vbmeta-sign-custom.img w boot new-boot.img reset"));
             DEG_LOG(I, u8"刷写完毕！请检查是否有报错\n");
             return;
         }
@@ -690,10 +663,6 @@ void custom_patch()
         DEG_LOG(I, u8"请在关机状态下按住侧键并连接四点线，工具有反应之后松手\n");
         DEG_LOG(I, u8"执行命令: %s\n", cmd.c_str());
         int ret = system(cmd.c_str());
-        if (ret != 0)
-        {
-            DEG_LOG(E, u8"执行命令失败，错误码: %d\n", ret);
-        }
         DEG_LOG(I, u8"刷写完毕！请检查是否有报错\n");
         DEG_LOG(I, u8"请按任意键退出程序...\n");
         std::cin.get();
