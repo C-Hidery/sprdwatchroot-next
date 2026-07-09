@@ -28,7 +28,7 @@ using json = nlohmann::json;
 
 // 外部工具链/文件硬编码
 const std::string KP_IMG_PATCHER("kptools.exe");
-const std::string KP_IMG("kpimg-android.kpimg-android");
+const std::string KP_IMG("kpimg-android");
 const std::string KEY_DIR("keys");
 const std::string ALGORITHM("SHA256_RSA4096");
 const std::string KEY_BOOT("keys\\rsa4096_boot.pem");
